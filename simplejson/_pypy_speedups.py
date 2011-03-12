@@ -10,7 +10,7 @@ def next_terminator(s, begin):
     # STRINGCHUNK = re.compile(r'(.*?)(["\\\x00-\x1f])', FLAGS)
     end = begin
     needs_decode = False
-    while 1:
+    while True:
         c = s[end]
         if c > '\x7f':
             needs_decode = True
@@ -18,7 +18,6 @@ def next_terminator(s, begin):
             return s[begin:end], c, end + 1, needs_decode
         end += 1
     raise IndexError(-1)
-
 
 def scanstring(s, end, encoding=None, strict=True):
     """Scan the string s for a JSON string. End is the index of the
@@ -34,7 +33,7 @@ def scanstring(s, end, encoding=None, strict=True):
     chunks = []
     begin = end - 1
     is_unicode = isinstance(s, unicode)
-    while 1:
+    while True:
         try:
             content, terminator, end, needs_decode = next_terminator(s, end)
         except IndexError:
@@ -124,15 +123,99 @@ def skip_whitespace(s, end):
     except IndexError:
         return '', len(s)
 
+def obj_class_factory(object_hook, object_pairs_hook, memo):
+    if object_pairs_hook:
+        class ObjList(object):
+            def __init__(self):
+                self.pairs = []
+
+            def __setitem__(self, k, v):
+                self.pairs.append((memo.setdefault(k, k), v))
+
+            def finalize(self):
+                return object_pairs_hook(self.pairs)
+        return ObjList
+    else:
+        class ObjDict(object):
+            def __init__(self):
+                self.pairs = {}
+
+            def __setitem__(self, k, v):
+                self.pairs[memo.setdefault(k, k)] = v
+
+            def finalize(self):
+                if object_hook:
+                    return object_hook(self.pairs)
+                return self.pairs
+        return ObjDict
+
+def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
+    Obj = obj_class_factory(object_hook, object_pairs_hook, memo)
+    def parse_object((s, end), _scan_once):
+        pairs = Obj()
+        try:
+            while is_whitespace(s[end]):
+                end += 1
+            nextchar = s[end]
+            if nextchar == '}':
+                return pairs.finalize(), end + 1
+            elif nextchar != '"':
+                JSONDecodeError("Expecting property name", s, end)
+        except IndexError:
+            raise JSONDecodeError("Expecting property name", s, len(s))
+        end += 1
+        while True:
+            key, end = scanstring(s, end, encoding, strict)
+            try:
+                # To skip some function call overhead we optimize the fast
+                # paths where the JSON key separator is ": " or just ":".
+                if s[end] != ':':
+                    while is_whitespace(s[end]):
+                        end += 1
+                    if s[end] != ':':
+                        raise JSONDecodeError("Expecting : delimiter", s, end)
+            except IndexError:
+                raise JSONDecodeError("Expecting : delimiter", s, len(s))
+            end += 1
+            try:
+                while is_whitespace(s[end]):
+                    end += 1
+            except IndexError:
+                pass
+            try:
+                value, end = _scan_once(s, end)
+            except StopIteration:
+                raise JSONDecodeError("Expecting object", s, end)
+            pairs[key] = value
+            try:
+                while is_whitespace(s[end]):
+                    end += 1
+                nextchar = s[end]
+                end += 1
+                if nextchar == '}':
+                    break
+                elif nextchar != ',':
+                    raise JSONDecodeError("Expecting , delimiter", s, end - 1)
+                while is_whitespace(s[end]):
+                    end += 1
+                if s[end] != '"':
+                    raise JSONDecodeError("Expecting property name", s, end)
+                end += 1
+            except IndexError:
+                raise JSONDecodeError("Expecting property name", s, len(s))
+        return pairs.finalize(), end
+    return parse_object
+
 def make_scanner(context):
-    parse_object = context.parse_object
     parse_string = scanstring
     encoding = context.encoding or DEFAULT_ENCODING
     strict = context.strict
     parse_constant = context.parse_constant
-    object_hook = context.object_hook
-    object_pairs_hook = context.object_pairs_hook
     memo = context.memo
+    parse_object = object_parser(encoding, strict,
+                                 context.object_hook,
+                                 context.object_pairs_hook,
+                                 memo)
 
     def parse_array((s, end), scan_once):
         values = []
@@ -234,8 +317,7 @@ def make_scanner(context):
         if nextchar == '"':
             return parse_string(string, idx + 1, encoding, strict)
         elif nextchar == '{':
-            return parse_object((string, idx + 1), encoding, strict,
-                _scan_once, object_hook, object_pairs_hook, memo)
+            return parse_object((string, idx + 1), _scan_once)
         elif nextchar == '[':
             return parse_array((string, idx + 1), _scan_once)
         elif nextchar == 'n' and string[idx:idx + 4] == 'null':
