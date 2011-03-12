@@ -111,10 +111,21 @@ def scanstring(s, end, encoding=None, strict=True):
     else:
         return ''.join(chunks), end
 
+def is_whitespace(char):
+    return (char == ' ') or (char == '\t') or (char == '\n') or (char == '\r')
+
+def skip_whitespace(s, end):
+    try:
+        while True:
+            nextchar = s[end]
+            if not is_whitespace(nextchar):
+                return nextchar, end
+            end += 1
+    except IndexError:
+        return '', len(s)
 
 def make_scanner(context):
     parse_object = context.parse_object
-    parse_array = context.parse_array
     parse_string = context.parse_string
     encoding = context.encoding
     strict = context.strict
@@ -122,6 +133,44 @@ def make_scanner(context):
     object_hook = context.object_hook
     object_pairs_hook = context.object_pairs_hook
     memo = context.memo
+
+    def parse_array((s, end), scan_once):
+        values = []
+        try:
+            nextchar = s[end]
+            if is_whitespace(nextchar):
+                nextchar, end = skip_whitespace(s, end)
+        except IndexError:
+            nextchar = ''
+        # Look-ahead for trivial empty array
+        if nextchar == ']':
+            return values, end + 1
+        while True:
+            try:
+                value, end = scan_once(s, end)
+            except StopIteration:
+                raise JSONDecodeError("Expecting object", s, end)
+            values.append(value)
+            try:
+                nextchar = s[end]
+            except IndexError:
+                nextchar = ''
+            else:
+                if is_whitespace(nextchar):
+                    nextchar, end = skip_whitespace(s, end)
+                end += 1
+            if nextchar == ']':
+                break
+            elif nextchar != ',':
+                raise JSONDecodeError("Expecting , delimiter", s, end)
+
+            try:
+                while is_whitespace(s[end]):
+                    end += 1
+            except IndexError:
+                pass
+
+        return values, end
 
     def match_number(s, start):
         idx = start
