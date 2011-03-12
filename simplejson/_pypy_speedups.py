@@ -122,42 +122,33 @@ def skip_whitespace(s, end):
     except IndexError:
         return '', len(s)
 
-def obj_class_factory(object_hook, object_pairs_hook, memo):
+def setitem_list(lst, k, v):
+    lst.append((k, v))
+
+def setitem_dict(dct, k, v):
+    dct[k] = v
+
+def finalize_noop(dct):
+    return dct
+
+def obj_funcs(object_hook, object_pairs_hook):
     if object_pairs_hook:
-        class ObjList(object):
-            def __init__(self):
-                self.pairs = []
-
-            def __setitem__(self, k, v):
-                self.pairs.append((memo.setdefault(k, k), v))
-
-            def finalize(self):
-                return object_pairs_hook(self.pairs)
-        return ObjList
+        return list, setitem_list, object_pairs_hook
+    elif object_hook:
+        return dict, setitem_dict, object_hook
     else:
-        class ObjDict(object):
-            def __init__(self):
-                self.pairs = {}
-
-            def __setitem__(self, k, v):
-                self.pairs[memo.setdefault(k, k)] = v
-
-            def finalize(self):
-                if object_hook:
-                    return object_hook(self.pairs)
-                return self.pairs
-        return ObjDict
+        return dict, setitem_dict, finalize_noop
 
 def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
-    Obj = obj_class_factory(object_hook, object_pairs_hook, memo)
+    new_obj, setitem, finalize = obj_funcs(object_hook, object_pairs_hook)
     def parse_object((s, end), _scan_once):
-        pairs = Obj()
+        pairs = new_obj()
         try:
             while is_whitespace(s[end]):
                 end += 1
             nextchar = s[end]
             if nextchar == '}':
-                return pairs.finalize(), end + 1
+                return finalize(pairs), end + 1
             elif nextchar != '"':
                 JSONDecodeError("Expecting property name", s, end)
         except IndexError:
@@ -165,6 +156,7 @@ def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
         end += 1
         while 1:
             key, end = scanstring(s, end, encoding, strict)
+            key = memo.setdefault(key, key)
             try:
                 # To skip some function call overhead we optimize the fast
                 # paths where the JSON key separator is ": " or just ":".
@@ -185,7 +177,7 @@ def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
                 value, end = _scan_once(s, end)
             except StopIteration:
                 raise JSONDecodeError("Expecting object", s, end)
-            pairs[key] = value
+            setitem(pairs, key, value)
             try:
                 while is_whitespace(s[end]):
                     end += 1
@@ -202,7 +194,7 @@ def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
                 end += 1
             except IndexError:
                 raise JSONDecodeError("Expecting property name", s, len(s))
-        return pairs.finalize(), end
+        return finalize(pairs), end
     return parse_object
 
 def make_scanner(context):
