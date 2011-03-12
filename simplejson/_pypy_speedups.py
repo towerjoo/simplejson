@@ -126,8 +126,8 @@ def skip_whitespace(s, end):
 
 def make_scanner(context):
     parse_object = context.parse_object
-    parse_string = context.parse_string
-    encoding = context.encoding
+    parse_string = scanstring
+    encoding = context.encoding or DEFAULT_ENCODING
     strict = context.strict
     parse_constant = context.parse_constant
     object_hook = context.object_hook
