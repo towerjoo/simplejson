@@ -106,9 +106,13 @@ __all__ = [
 
 __author__ = 'Bob Ippolito <bob@redivi.com>'
 
+import sys
+IS_PYPY = hasattr(sys, 'pypy_translation_info')
+
 from decimal import Decimal
 
-from decoder import JSONDecoder, JSONDecodeError
+from errors import JSONDecodeError
+from decoder import JSONDecoder
 from encoder import JSONEncoder
 def _import_OrderedDict():
     import collections

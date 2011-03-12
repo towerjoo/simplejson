@@ -1,7 +1,13 @@
 """JSON token scanner
 """
 import re
+
+from simplejson import IS_PYPY
+
 def _import_c_make_scanner():
+    if IS_PYPY:
+        from simplejson._pypy_speedups import make_scanner
+        return make_scanner
     try:
         from simplejson._speedups import make_scanner
         return make_scanner

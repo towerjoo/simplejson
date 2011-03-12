@@ -367,7 +367,7 @@ raise_errmsg(char *msg, PyObject *s, Py_ssize_t end)
     static PyObject *JSONDecodeError = NULL;
     PyObject *exc;
     if (JSONDecodeError == NULL) {
-        PyObject *decoder = PyImport_ImportModule("simplejson.decoder");
+        PyObject *decoder = PyImport_ImportModule("simplejson.errors");
         if (decoder == NULL)
             return;
         JSONDecodeError = PyObject_GetAttrString(decoder, "JSONDecodeError");
