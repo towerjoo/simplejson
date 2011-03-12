@@ -5,20 +5,6 @@ from simplejson.errors import JSONDecodeError
 
 DEFAULT_ENCODING = "utf-8"
 
-def next_terminator(s, begin):
-    # FLAGS = re.VERBOSE | re.MULTILINE | re.DOTALL
-    # STRINGCHUNK = re.compile(r'(.*?)(["\\\x00-\x1f])', FLAGS)
-    end = begin
-    needs_decode = False
-    while True:
-        c = s[end]
-        if c > '\x7f':
-            needs_decode = True
-        if ('\x00' <= c <= '\x1f') or (c == '"') or (c == '\\'):
-            return s[begin:end], c, end + 1, needs_decode
-        end += 1
-    raise IndexError(-1)
-
 def scanstring(s, end, encoding=None, strict=True):
     """Scan the string s for a JSON string. End is the index of the
     character in s after the quote that started the JSON string.
@@ -33,12 +19,25 @@ def scanstring(s, end, encoding=None, strict=True):
     chunks = []
     begin = end - 1
     is_unicode = isinstance(s, unicode)
-    while True:
+    while 1:
+        # Find the next "terminator"
+        chunk_end = end
+        needs_decode = False
         try:
-            content, terminator, end, needs_decode = next_terminator(s, end)
+            while 1:
+                c = s[chunk_end]
+                if (c == '"') or (c == '\\') or ('\x00' <= c <= '\x1f'):
+                    break
+                elif not is_unicode and c > '\x7f':
+                    needs_decode = True
+                chunk_end += 1
         except IndexError:
             raise JSONDecodeError(
                 "Unterminated string starting at", s, begin)
+        else:
+            content = s[end:chunk_end]
+            terminator = c
+            end = chunk_end + 1
         # Content is contains zero or more unescaped string characters
         if not is_unicode and needs_decode:
             content = unicode(content, encoding)
@@ -115,7 +114,7 @@ def is_whitespace(char):
 
 def skip_whitespace(s, end):
     try:
-        while True:
+        while 1:
             nextchar = s[end]
             if not is_whitespace(nextchar):
                 return nextchar, end
@@ -164,7 +163,7 @@ def object_parser(encoding, strict, object_hook, object_pairs_hook, memo):
         except IndexError:
             raise JSONDecodeError("Expecting property name", s, len(s))
         end += 1
-        while True:
+        while 1:
             key, end = scanstring(s, end, encoding, strict)
             try:
                 # To skip some function call overhead we optimize the fast
@@ -228,7 +227,7 @@ def make_scanner(context):
         # Look-ahead for trivial empty array
         if nextchar == ']':
             return values, end + 1
-        while True:
+        while 1:
             try:
                 value, end = scan_once(s, end)
             except StopIteration:
