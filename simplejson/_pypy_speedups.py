@@ -118,8 +118,6 @@ def make_scanner(context):
     parse_string = context.parse_string
     encoding = context.encoding
     strict = context.strict
-    parse_float = context.parse_float
-    parse_int = context.parse_int
     parse_constant = context.parse_constant
     object_hook = context.object_hook
     object_pairs_hook = context.object_pairs_hook
