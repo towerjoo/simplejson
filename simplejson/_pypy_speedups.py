@@ -16,9 +16,13 @@ def scanstring(s, end, encoding=None, strict=True):
     after the end quote."""
     if encoding is None:
         encoding = DEFAULT_ENCODING
-    chunks = []
+    chunks = None
     begin = end - 1
     is_unicode = isinstance(s, unicode)
+    if is_unicode:
+        empty_str = u''
+    else:
+        empty_str = ''
     while 1:
         # Find the next "terminator"
         chunk_end = end
@@ -35,19 +39,28 @@ def scanstring(s, end, encoding=None, strict=True):
             raise JSONDecodeError(
                 "Unterminated string starting at", s, begin)
         else:
-            content = s[end:chunk_end]
+            if end == chunk_end:
+                content = empty_str
+            else:
+                content = s[end:chunk_end]
             terminator = c
             end = chunk_end + 1
         # Content is contains zero or more unescaped string characters
         if not is_unicode and needs_decode:
             content = unicode(content, encoding)
-        if content:
-            chunks.append(content)
         # Terminator is the end of string, a literal control character,
         # or a backslash denoting that an escape sequence follows
         if terminator == '"':
+            if chunks is None:
+                return content, end
+            elif content is not empty_str:
+                chunks.append(content)
             break
-        elif terminator != '\\':
+        if chunks is None:
+            chunks = [content]
+        elif content is not empty_str:
+            chunks.append(content)
+        if terminator != '\\':
             if strict:
                 msg = "Invalid control character %r at" % (terminator,)
                 raise JSONDecodeError(msg, s, end)
@@ -104,10 +117,7 @@ def scanstring(s, end, encoding=None, strict=True):
             end = next_end
         # Append the unescaped character
         chunks.append(char)
-    if is_unicode:
-        return u''.join(chunks), end
-    else:
-        return ''.join(chunks), end
+    return empty_str.join(chunks), end
 
 def is_whitespace(char):
     return (char == ' ') or (char == '\t') or (char == '\n') or (char == '\r')
