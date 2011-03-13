@@ -30,9 +30,12 @@ def scanstring(s, end, encoding=None, strict=True):
         try:
             while 1:
                 c = s[chunk_end]
-                if (c == '"') or (c == '\\') or ('\x00' <= c <= '\x1f'):
+                if (c == '"') or (c == '\\'):
                     break
-                elif not is_unicode and c > '\x7f':
+                ordc = ord(c)
+                if (ordc <= 0x1f):
+                    break
+                elif (not is_unicode) and (ordc > 0x7f):
                     needs_decode = True
                 chunk_end += 1
         except IndexError:
