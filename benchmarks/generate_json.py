@@ -1,10 +1,15 @@
 """Generate a JSON file for json decode benchmarking purposes using freqdata.py.
 Works with pypy and python.
 
+Initial setup::
+
+    $ git clone -b pypy-support git://github.com/simplejson/simplejson.git; \
+      cd simplejson
+
 To generate::
 
     $ mkdir -p build/bench; \
-      python benchmarks/generate_json.py > build/bench/feed.json
+      PYTHONPATH=. python benchmarks/generate_json.py > build/bench/feed.json
 
 To run the read benchmark::
 
