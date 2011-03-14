@@ -3,7 +3,14 @@
 import re
 from decimal import Decimal
 
+from simplejson import IS_PYPY
+from simplejson.floatutil import floatstr
+
 def _import_speedups():
+    if IS_PYPY:
+        from simplejson import _pypy_speedups
+        return (_pypy_speedups.encode_basestring_ascii,
+            _pypy_speedups.make_encoder)
     try:
         from simplejson import _speedups
         return _speedups.encode_basestring_ascii, _speedups.make_encoder
@@ -11,7 +18,6 @@ def _import_speedups():
         return None, None
 c_encode_basestring_ascii, c_make_encoder = _import_speedups()
 
-from simplejson.decoder import PosInf
 
 ESCAPE = re.compile(r'[\x00-\x1f\\"\b\f\n\r\t]')
 ESCAPE_ASCII = re.compile(r'([\\"]|[^\ -~])')
@@ -28,8 +34,6 @@ ESCAPE_DCT = {
 for i in range(0x20):
     #ESCAPE_DCT.setdefault(chr(i), '\\u{0:04x}'.format(i))
     ESCAPE_DCT.setdefault(chr(i), '\\u%04x' % (i,))
-
-FLOAT_REPR = repr
 
 def encode_basestring(s):
     """Return a JSON representation of a Python string
@@ -243,28 +247,8 @@ class JSONEncoder(object):
                     o = o.decode(_encoding)
                 return _orig_encoder(o)
 
-        def floatstr(o, allow_nan=self.allow_nan,
-                _repr=FLOAT_REPR, _inf=PosInf, _neginf=-PosInf):
-            # Check for specials. Note that this type of test is processor
-            # and/or platform-specific, so do tests which don't depend on
-            # the internals.
-
-            if o != o:
-                text = 'NaN'
-            elif o == _inf:
-                text = 'Infinity'
-            elif o == _neginf:
-                text = '-Infinity'
-            else:
-                return _repr(o)
-
-            if not allow_nan:
-                raise ValueError(
-                    "Out of range float values are not JSON compliant: " +
-                    repr(o))
-
-            return text
-
+        def _floatstr(o, allow_nan=self.allow_nan, floatstr=floatstr):
+            return floatstr(o, allow_nan)
 
         key_memo = {}
         if (_one_shot and c_make_encoder is not None
@@ -275,7 +259,7 @@ class JSONEncoder(object):
                 self.skipkeys, self.allow_nan, key_memo, self.use_decimal)
         else:
             _iterencode = _make_iterencode(
-                markers, self.default, _encoder, self.indent, floatstr,
+                markers, self.default, _encoder, self.indent, _floatstr,
                 self.key_separator, self.item_separator, self.sort_keys,
                 self.skipkeys, _one_shot, self.use_decimal)
         try:

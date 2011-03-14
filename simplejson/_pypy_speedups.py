@@ -1,9 +1,291 @@
 """PyPy replacements for the _speedups C extension"""
 import sys
+from operator import itemgetter
+from cStringIO import StringIO
+from decimal import Decimal
 
 from simplejson.errors import JSONDecodeError
+from simplejson.floatutil import floatstr
 
 DEFAULT_ENCODING = "utf-8"
+
+def next_ascii_unsafe(s, i, len_s):
+    while i < len_s:
+        c = s[i]
+        if c == '"' or c == '\\':
+            break
+        ordc = ord(c)
+        if (ordc < 0x1f) or (ordc > 0x7f):
+            break
+        i += 1
+    return i
+
+class NeedsUTF8Decoding(ValueError):
+    pass
+
+def ascii_escape(c, is_unicode):
+    if c == '"':
+        return '\\"'
+    elif c == '\\':
+        return '\\\\'
+    elif c == '\b':
+        return '\\b'
+    elif c == '\f':
+        return '\\f'
+    elif c == '\n':
+        return '\\n'
+    elif c == '\r':
+        return '\\r'
+    elif c == '\t':
+        return '\\t'
+    ordc = ord(c)
+    if ordc < 0x7f:
+        return '\\u00%02x' % (ordc,)
+    elif not is_unicode:
+        raise NeedsUTF8Decoding
+    elif ordc < 0x10000:
+        return '\\u%04x' % (ordc,)
+    # surrogate pair
+    ordc -= 0x10000
+    s1 = 0xd800 | ((ordc >> 10) & 0x3ff)
+    s2 = 0xdc00 | (ordc & 0x3ff)
+    return '\\u%04x\\u%04x' % (s1, s2)
+
+def encode_basestring_ascii(s):
+    """Return an ASCII-only JSON representation of a Python string
+
+    """
+    len_s = len(s)
+    if len_s == 0:
+        return '""'
+    sio = None
+    start = 0
+    stop = 0
+    is_unicode = isinstance(s, unicode)
+    while start < len_s:
+        stop = next_ascii_unsafe(s, start, len_s)
+        if sio is None:
+            if stop == len_s:
+                # all-ascii with no escaped chars
+                if is_unicode:
+                    return '"' + str(s) + '"'
+                else:
+                    return '"' + s + '"'
+            sio = StringIO()
+            sio.write('"')
+        if start != stop:
+            chunk = s[start:stop]
+            if is_unicode:
+                chunk = str(chunk)
+            sio.write(chunk)
+        if stop < len_s:
+            c = s[stop]
+            try:
+                sio.write(ascii_escape(c, is_unicode))
+            except NeedsUTF8Decoding:
+                s = unicode(s, 'utf-8')
+                c = s[stop]
+                is_unicode = True
+                len_s = len(s)
+                sio.write(ascii_escape(c, is_unicode))
+            stop += 1
+        start = stop
+    sio.write('"')
+    return sio.getvalue()
+
+def encode_basestring_ascii_write(s, write):
+    """Write an ASCII-only JSON representation of a Python string to sio
+
+    """
+    len_s = len(s)
+    if len_s == 0:
+        write('""')
+        return
+    start = 0
+    stop = 0
+    is_unicode = isinstance(s, unicode)
+    write('"')
+    while start < len_s:
+        stop = next_ascii_unsafe(s, start, len_s)
+        if start == 0 and stop == len_s:
+            # all-ascii with no escaped chars
+            if is_unicode:
+                s = str(s)
+            write(s)
+            break
+        if start != stop:
+            chunk = s[start:stop]
+            if is_unicode:
+                chunk = str(chunk)
+            write(chunk)
+        if stop < len_s:
+            c = s[stop]
+            try:
+                write(ascii_escape(c, is_unicode))
+            except NeedsUTF8Decoding:
+                s = unicode(s, 'utf-8')
+                c = s[stop]
+                is_unicode = True
+                len_s = len(s)
+                write(ascii_escape(c, is_unicode))
+            stop += 1
+        start = stop
+    write('"')
+
+def make_encoder(markers, defaultfn, encoder, indent, key_separator,
+                 item_separator, sort_keys, skipkeys, allow_nan,
+                 key_memo, use_decimal):
+
+    use_write_encoder = encoder is encode_basestring_ascii
+
+    def encode_string_write(s, write, write_unicode):
+        rval = encoder(s)
+        if (write is not write_unicode) and isinstance(rval, unicode):
+            write_unicode(rval)
+        else:
+            write(rval)
+
+    def encode_list(lst, indent_level, write, write_unicode):
+        if not lst:
+            write('[]')
+            return
+        if markers is not None:
+            markerid = id(lst)
+            if markerid in markers:
+                raise ValueError("Circular reference detected")
+            markers[markerid] = lst
+        if indent is not None:
+            indent_level += 1
+            newline_indent = '\n' + (indent * indent_level)
+            separator = item_separator + newline_indent
+        else:
+            newline_indent = None
+            separator = item_separator
+        first = True
+        for elem in lst:
+            if first:
+                write('[')
+                first = False
+            else:
+                write(separator)
+            iterencode(elem, indent_level, write, write_unicode)
+        if newline_indent is not None:
+            indent_level -= 1
+            write('\n' + (indent * indent_level))
+        write(']')
+        if markers is not None:
+            del markers[markerid]
+
+    def encode_dict(dct, indent_level, write, write_unicode):
+        if not dct:
+            write('{}')
+            return
+        if markers is not None:
+            markerid = id(dct)
+            if markerid in markers:
+                raise ValueError("Circular reference detected")
+            markers[markerid] = dct
+        if indent is not None:
+            indent_level += 1
+            newline_indent = '\n' + (indent * indent_level)
+            separator = item_separator + newline_indent
+        else:
+            newline_indent = None
+            separator = item_separator
+        first = True
+        items = dct.iteritems()
+        if sort_keys:
+            items = sorted(items, key=itemgetter(0))
+        for k, v in items:
+            if first:
+                write('{')
+                first = False
+            else:
+                write(separator)
+            if isinstance(k, basestring):
+                pass
+            # JavaScript is weakly typed for these, so it makes sense to
+            # also allow them.  Many encoders seem to do something like this.
+            elif isinstance(k, float):
+                k = floatstr(k, allow_nan)
+            elif k is True:
+                k = 'true'
+            elif k is False:
+                k = 'false'
+            elif k is None:
+                k = 'null'
+            elif isinstance(k, (int, long)):
+                k = str(k)
+            elif skipkeys:
+                continue
+            else:
+                raise TypeError("key " + repr(k) + " is not a string")
+            if use_write_encoder:
+                encode_basestring_ascii_write(k, write)
+            else:
+                encode_string_write(k, write, write_unicode)
+            write(key_separator)
+            iterencode(v, indent_level, write, write_unicode)
+        write('}')
+        if markers is not None:
+            del markers[markerid]
+
+    def iterencode(obj, indent_level, write, write_unicode):
+        if obj is None:
+            write('null')
+        elif obj is True:
+            write('true')
+        elif obj is False:
+            write('false')
+        elif isinstance(obj, basestring):
+            if use_write_encoder:
+                encode_basestring_ascii_write(obj, write)
+            else:
+                encode_string_write(obj, write, write_unicode)
+        elif isinstance(obj, (int, long)):
+            write(str(obj))
+        elif isinstance(obj, float):
+            write(floatstr(obj, allow_nan))
+        elif isinstance(obj, (list, tuple)):
+            encode_list(obj, indent_level, write, write_unicode)
+        elif isinstance(obj, dict):
+            encode_dict(obj, indent_level, write, write_unicode)
+        elif use_decimal and isinstance(obj, Decimal):
+            write(str(obj))
+        else:
+            if markers is not None:
+                ident = id(obj)
+                if ident in markers:
+                    raise ValueError("Circular reference detected")
+                markers[ident] = obj
+            newobj = defaultfn(obj)
+            iterencode(newobj, indent_level, write, write_unicode)
+            if markers is not None:
+                del markers[ident]
+
+    def iterencode_outer_list(obj, indent_level):
+        lst = []
+        iterencode(obj, indent_level, lst.append, lst.append)
+        return lst
+
+    def iterencode_outer_sio(obj, indent_level):
+        # This is very slow!
+        sio = StringIO()
+        unicode_chunks = []
+        def write_unicode(s):
+            unicode_chunks.append((sio.tell(), s))
+        iterencode(obj, indent_level, sio.write, write_unicode)
+        if unicode_chunks:
+            rval = []
+            sio.seek(0)
+            for seek, chunk in unicode_chunks:
+                rval.append(sio.read(seek - sio.tell()))
+                rval.append(chunk)
+            rval.append(sio.read())
+            return rval
+        return [sio.getvalue()]
+
+    return iterencode_outer_list
 
 def scanstring(s, end, encoding=None, strict=True):
     """Scan the string s for a JSON string. End is the index of the
