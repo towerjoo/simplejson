@@ -6,11 +6,18 @@ To generate::
     $ mkdir -p build/bench; \
       python benchmarks/generate_json.py > build/bench/feed.json
 
-To run the benchmark::
+To run the read benchmark::
 
     $ python -m timeit -n 1 -r 5 \
       -s 'import simplejson;s = open("build/bench/feed.json", "rb").read()' \
       'simplejson.loads(s)'
+
+To run the write benchmark::
+
+    $ python -m timeit -n 1 -r 5 \
+      -s 'import simplejson;s = open("build/bench/feed.json", "rb").read()' \
+      -s 'd = simplejson.loads(s)' \
+      'simplejson.dumps(d)'
 
 """
 import sys
