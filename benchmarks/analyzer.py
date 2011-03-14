@@ -1,9 +1,10 @@
-"""Analyze a 'real' feed.json some frequency tables that we can use to generate
-something like it. You probably do not need to use this, a perfectly good
-freqdata.py is already included.
+"""Analyze a 'real' feed.json and output some frequency tables that we can use
+to generate something like it. You probably do not need to use this, a
+perfectly good freqdata.py is already included and it is important to not
+change this to keep benchamrks the same.
 
 NOTE: Run this with cpython and make sure simplejson has the _speedups.so
-compiled.
+compiled. This is necessary to get the str/unicode type analysis correct.
 
     $ curl -o benchmarks/feed.json --compressed \
     'http://en.mochimedia.com/feeds/games?format=json'
