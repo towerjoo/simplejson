@@ -1,3 +1,18 @@
+"""Generate a JSON file for json decode benchmarking purposes using freqdata.py.
+Works with pypy and python.
+
+To generate::
+
+    $ mkdir -p build/bench; \
+      python benchmarks/generate_json.py > build/bench/feed.json
+
+To run the benchmark::
+
+    $ python -m timeit -n 1 -r 5 \
+      -s 'import simplejson;s = open("build/bench/feed.json", "rb").read()' \
+      'simplejson.loads(s)'
+
+"""
 import sys
 import operator
 from random import Random
