@@ -4,17 +4,6 @@ import re
 
 from simplejson import IS_PYPY
 
-def _import_c_make_scanner():
-    if IS_PYPY:
-        from simplejson._pypy_speedups import make_scanner
-        return make_scanner
-    try:
-        from simplejson._speedups import make_scanner
-        return make_scanner
-    except ImportError:
-        return None
-c_make_scanner = _import_c_make_scanner()
-
 __all__ = ['make_scanner']
 
 NUMBER_RE = re.compile(
@@ -80,4 +69,27 @@ def py_make_scanner(context):
 
     return scan_once
 
-make_scanner = c_make_scanner or py_make_scanner
+make_scanner = py_make_scanner
+c_make_scanner = None
+
+def _import_c_make_scanner():
+    if IS_PYPY:
+        from simplejson._pypy_speedups import make_scanner
+        return make_scanner
+    try:
+        from simplejson._speedups import make_scanner
+        return make_scanner
+    except ImportError:
+        return None
+
+def _use_speedups(enabled):
+    global c_make_scanner, py_make_scanner
+    if not enabled:
+        c_make_scanner = None
+        make_scanner = py_make_scanner
+    else:
+        c_make_scanner = _import_c_make_scanner()
+        make_scanner = c_make_scanner or py_make_scanner
+    return c_make_scanner is not None
+
+_use_speedups(True)

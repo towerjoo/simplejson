@@ -6,19 +6,6 @@ from decimal import Decimal
 from simplejson import IS_PYPY
 from simplejson.floatutil import floatstr
 
-def _import_speedups():
-    if IS_PYPY:
-        from simplejson import _pypy_speedups
-        return (_pypy_speedups.encode_basestring_ascii,
-            _pypy_speedups.make_encoder)
-    try:
-        from simplejson import _speedups
-        return _speedups.encode_basestring_ascii, _speedups.make_encoder
-    except ImportError:
-        return None, None
-c_encode_basestring_ascii, c_make_encoder = _import_speedups()
-
-
 ESCAPE = re.compile(r'[\x00-\x1f\\"\b\f\n\r\t]')
 ESCAPE_ASCII = re.compile(r'([\\"]|[^\ -~])')
 HAS_UTF8 = re.compile(r'[\x80-\xff]')
@@ -70,9 +57,6 @@ def py_encode_basestring_ascii(s):
                 return '\\u%04x\\u%04x' % (s1, s2)
     return '"' + str(ESCAPE_ASCII.sub(replace, s)) + '"'
 
-
-encode_basestring_ascii = (
-    c_encode_basestring_ascii or py_encode_basestring_ascii)
 
 class JSONEncoder(object):
     """Extensible JSON <http://json.org> encoder for Python data structures.
@@ -483,3 +467,32 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
                 del markers[markerid]
 
     return _iterencode
+
+c_encode_basestring_ascii = None
+c_make_encoder = None
+encode_basestring_ascii = py_encode_basestring_ascii
+
+def _import_speedups():
+    if IS_PYPY:
+        from simplejson import _pypy_speedups
+        return (_pypy_speedups.encode_basestring_ascii,
+            _pypy_speedups.make_encoder)
+    try:
+        from simplejson import _speedups
+        return _speedups.encode_basestring_ascii, _speedups.make_encoder
+    except ImportError:
+        return None, None
+
+def _use_speedups(enabled):
+    global c_encode_basestring_ascii, c_make_encoder, encode_basestring_ascii
+    if not enabled:
+        c_encode_basestring_ascii = None
+        c_make_encoder = None
+        encode_basestring_ascii = py_encode_basestring_ascii
+    else:
+        c_encode_basestring_ascii, c_make_encoder = _import_speedups()
+        encode_basestring_ascii = (c_encode_basestring_ascii or
+            py_encode_basestring_ascii)
+    return c_encode_basestring_ascii is not None
+
+_use_speedups(True)

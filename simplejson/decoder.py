@@ -8,17 +8,6 @@ from simplejson.scanner import make_scanner
 from simplejson.errors import JSONDecodeError
 from simplejson.floatutil import NaN, PosInf, NegInf
 
-def _import_c_scanstring():
-    if IS_PYPY:
-        from simplejson._pypy_speedups import scanstring
-        return scanstring
-    try:
-        from simplejson._speedups import scanstring
-        return scanstring
-    except ImportError:
-        return None
-c_scanstring = _import_c_scanstring()
-
 __all__ = ['JSONDecoder']
 
 FLAGS = re.VERBOSE | re.MULTILINE | re.DOTALL
@@ -113,10 +102,6 @@ def py_scanstring(s, end, encoding=None, strict=True,
         # Append the unescaped character
         _append(char)
     return u''.join(chunks), end
-
-
-# Use speedup if available
-scanstring = c_scanstring or py_scanstring
 
 WHITESPACE = re.compile(r'[ \t\n\r]*', FLAGS)
 WHITESPACE_STR = ' \t\n\r'
@@ -363,3 +348,29 @@ class JSONDecoder(object):
         except StopIteration:
             raise JSONDecodeError("No JSON object could be decoded", s, idx)
         return obj, end
+
+# Use speedup if available
+scanstring = py_scanstring
+c_scanstring = None
+
+def _import_c_scanstring():
+    if IS_PYPY:
+        from simplejson._pypy_speedups import scanstring
+        return scanstring
+    try:
+        from simplejson._speedups import scanstring
+        return scanstring
+    except ImportError:
+        return None
+
+def _use_speedups(enabled):
+    global scanstring, c_scanstring
+    if not enabled:
+        c_scanstring = None
+        scanstring = c_scanstring or py_scanstring
+    else:
+        c_scanstring = _import_c_scanstring()
+        scanstring = py_scanstring
+    return c_scanstring is not None
+
+_use_speedups(True)

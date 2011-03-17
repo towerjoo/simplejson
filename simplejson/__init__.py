@@ -123,13 +123,6 @@ def _import_OrderedDict():
         return ordered_dict.OrderedDict
 OrderedDict = _import_OrderedDict()
 
-def _import_c_make_encoder():
-    try:
-        from simplejson._speedups import make_encoder
-        return make_encoder
-    except ImportError:
-        return None
-
 _default_encoder = JSONEncoder(
     skipkeys=False,
     ensure_ascii=True,
@@ -273,10 +266,6 @@ def dumps(obj, skipkeys=False, ensure_ascii=True, check_circular=True,
         use_decimal=use_decimal, **kw).encode(obj)
 
 
-_default_decoder = JSONDecoder(encoding=None, object_hook=None,
-                               object_pairs_hook=None)
-
-
 def load(fp, encoding=None, cls=None, object_hook=None, parse_float=None,
         parse_int=None, parse_constant=None, object_pairs_hook=None,
         use_decimal=False, **kw):
@@ -406,24 +395,21 @@ def loads(s, encoding=None, cls=None, object_hook=None, parse_float=None,
     return cls(encoding=encoding, **kw).decode(s)
 
 
-def _toggle_speedups(enabled):
+_default_decoder = None
+_default_encoder = None
+_has_speedups = False
+
+def _use_speedups(enabled):
     import simplejson.decoder as dec
     import simplejson.encoder as enc
     import simplejson.scanner as scan
-    c_make_encoder = _import_c_make_encoder()
-    if enabled:
-        dec.scanstring = dec.c_scanstring or dec.py_scanstring
-        enc.c_make_encoder = c_make_encoder
-        enc.encode_basestring_ascii = (enc.c_encode_basestring_ascii or 
-            enc.py_encode_basestring_ascii)
-        scan.make_scanner = scan.c_make_scanner or scan.py_make_scanner
-    else:
-        dec.scanstring = dec.py_scanstring
-        enc.c_make_encoder = None
-        enc.encode_basestring_ascii = enc.py_encode_basestring_ascii
-        scan.make_scanner = scan.py_make_scanner
-    dec.make_scanner = scan.make_scanner
-    global _default_decoder
+    global _has_speedups
+    _has_speedups = False
+    for mod in dec, enc, scan:
+        mod_has_speedups = mod._use_speedups(enabled)
+        _has_speedups = _has_speedups or mod_has_speedups
+    
+    global _default_decoder, _default_encoder
     _default_decoder = JSONDecoder(
         encoding=None,
         object_hook=None,
@@ -439,4 +425,7 @@ def _toggle_speedups(enabled):
        separators=None,
        encoding='utf-8',
        default=None,
-   )
+    )
+    return _has_speedups
+
+_use_speedups(True)

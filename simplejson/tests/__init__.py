@@ -7,9 +7,11 @@ class OptionalExtensionTestSuite(unittest.TestSuite):
         import simplejson
         run = unittest.TestSuite.run
         run(self, result)
-        simplejson._toggle_speedups(False)
-        run(self, result)
-        simplejson._toggle_speedups(True)
+        if simplejson._has_speedups:
+            # if speedups are available, run the test again
+            simplejson._use_speedups(False)
+            run(self, result)
+            simplejson._use_speedups(True)
         return result
 
 
