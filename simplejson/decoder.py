@@ -367,10 +367,10 @@ def _use_speedups(enabled):
     global scanstring, c_scanstring
     if not enabled:
         c_scanstring = None
-        scanstring = c_scanstring or py_scanstring
+        scanstring = py_scanstring
     else:
         c_scanstring = _import_c_scanstring()
-        scanstring = py_scanstring
+        scanstring = c_scanstring or py_scanstring
     return c_scanstring is not None
 
 _use_speedups(True)
