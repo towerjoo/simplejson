@@ -24,6 +24,23 @@ To run the write benchmark::
       -s 'd = simplejson.loads(s)' \
       'simplejson.dumps(d)'
 
+To run the read benchmark with speedups disabled::
+
+    $ python -m timeit -n 1 -r 5 \
+      -s 'import simplejson' \
+      -s 'simplejson._use_speedups(False)' \
+      -s 's = open("build/bench/feed.json", "rb").read()' \
+      'simplejson.loads(s)'
+
+To run the write benchmark with speedups disabled::
+
+    $ python -m timeit -n 1 -r 5 \
+      -s 'import simplejson' \
+      -s 'simplejson._use_speedups(False)' \
+      -s 's = open("build/bench/feed.json", "rb").read()' \
+      -s 'd = simplejson.loads(s)' \
+      'simplejson.dumps(d)'
+
 """
 import sys
 import operator
