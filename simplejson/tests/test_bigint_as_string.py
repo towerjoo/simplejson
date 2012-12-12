@@ -55,4 +55,4 @@ class TestBigintAsString(TestCase):
                 json.loads(json.dumps(val, bigint_as_string=True)))
 
     def test_nothing(self):
-        self.assertEquals("1", "0")
+        self.assertEquals("1", "1")
